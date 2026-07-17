@@ -11,8 +11,13 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     $password = trim($_POST['password']);
 
     if (!empty($email) && !empty($password)) {
-        $stmt = $conn->prepare("SELECT id, name, password FROM users WHERE email = ?");
-        $stmt->bind_param("s", $email);
+        $stmt = $conn->prepare("SELECT id, name, email, password, is_admin FROM users WHERE email = ?");
+
+if (!$stmt) {
+    die("SQL Error: " . $conn->error);
+}
+
+$stmt->bind_param("s", $email);
         $stmt->execute();
         $result = $stmt->get_result();
 
@@ -23,6 +28,12 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             if (password_verify($password, $user['password'])) {
                 $_SESSION['user_id'] = $user['id'];
                 $_SESSION['user_name'] = $user['name'];
+                $_SESSION['user_email'] = $user['email'];
+
+                // Flag admin accounts so admin/esewa_transactions.php (and any
+                // other admin-only page) can check $_SESSION['is_admin']
+                $_SESSION['is_admin'] = ((int)$user['is_admin'] === 1);
+
                 $_SESSION['flash_message'] = "Login successful! Welcome back, " . $user['name'] . ".";
                 $_SESSION['flash_type'] = "success";
 

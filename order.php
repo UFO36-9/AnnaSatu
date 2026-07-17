@@ -17,6 +17,13 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_GET['api']) && $_GET['api'] 
         exit;
     }
 
+    // Require login to place an order, so we can tie it to a real user_id.
+    if (!isset($_SESSION['user_id'])) {
+        echo json_encode(["status" => "error", "message" => "Please log in before placing an order."]);
+        exit;
+    }
+    $user_id = $_SESSION['user_id'];
+
     $customer_name  = trim($data['customer_name']);
     $phone          = trim($data['phone']);
     $address        = trim($data['address']);
@@ -30,18 +37,28 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_GET['api']) && $_GET['api'] 
         exit;
     }
 
-    // Secure Prepared Statement insertion matching admin keys explicitly
-    $stmt = $conn->prepare("INSERT INTO orders (customer_name, phone, address, ordered_items, total_amount, status) VALUES (?, ?, ?, ?, ?, ?)");
-    
+    // customer_name (typed at checkout) is saved here on the order itself.
+    // checkout_esewa.php reads it back from this same orders table so the
+    // esewa_transactions log reflects the real customer name instead of a
+    // session-based guest email.
+    $stmt = $conn->prepare("INSERT INTO orders (customer_name, phone, address, ordered_items, total_amount, status, user_id) VALUES (?, ?, ?, ?, ?, ?, ?)");
+
     if (!$stmt) {
         echo json_encode(["status" => "error", "message" => "SQL Setup Failure: " . $conn->error]);
         exit;
     }
 
-    $stmt->bind_param("ssssis", $customer_name, $phone, $address, $ordered_items, $total_amount, $status);
+    $stmt->bind_param("ssssisi", $customer_name, $phone, $address, $ordered_items, $total_amount, $status, $user_id);
 
     if ($stmt->execute()) {
-        echo json_encode(["status" => "success", "message" => "Order placed successfully ✔"]);
+        $new_order_id = $conn->insert_id;
+        // Send the new order's id back so the browser can send the customer
+        // to eSewa to pay for this specific order.
+        echo json_encode([
+            "status"  => "success",
+            "message" => "Order placed successfully ✔",
+            "order_id" => $new_order_id
+        ]);
     } else {
         echo json_encode(["status" => "error", "message" => "Database Execution Error: " . $stmt->error]);
     }
@@ -249,7 +266,7 @@ nav ul li a:hover::after{
         <input type="text" id="phone" placeholder="Phone Number">
         <textarea id="address" placeholder="Delivery Address"></textarea>
 
-        <button onclick="placeOrder()">Place Order</button>
+        <button onclick="placeOrder()">Pay with eSewa 💳</button>
     </div>
 
 </div>
@@ -357,13 +374,10 @@ function placeOrder(){
     .then(response => response.json())
     .then(data => {
         if(data.status === "success"){
-            alert(data.message);
+            // Order is saved in the database. Now clear the cart and
+            // send the customer to eSewa to actually pay for it.
             localStorage.removeItem("cart");
-            cart = [];
-            document.getElementById("name").value = "";
-            document.getElementById("phone").value = "";
-            document.getElementById("address").value = "";
-            displayCart();
+            window.location.href = "checkout_esewa.php?order_id=" + data.order_id;
         } else {
             alert("System Error: " + data.message);
         }

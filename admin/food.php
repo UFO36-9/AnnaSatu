@@ -8,73 +8,117 @@ if(!isset($_SESSION['admin'])) {
     exit();
 }
 
+// ---- CSRF token setup ----
+if(empty($_SESSION['csrf_token'])) {
+    $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+}
+$csrf_token = $_SESSION['csrf_token'];
+
+function verify_csrf() {
+    if(!isset($_POST['csrf_token']) || !hash_equals($_SESSION['csrf_token'], $_POST['csrf_token'])) {
+        http_response_code(403);
+        die("Invalid or missing CSRF token.");
+    }
+}
+
+// ---- Safe image upload helper ----
+// Returns ['ok' => bool, 'path' => string, 'error' => string]
+function handle_image_upload($file, $target_dir) {
+    $allowed_ext = ["jpg", "jpeg", "png", "webp", "avif"];
+    $allowed_mime = ["image/jpeg", "image/png", "image/webp", "image/avif"];
+    $max_size = 5 * 1024 * 1024; // 5MB
+
+    if($file['size'] > $max_size) {
+        return ["ok" => false, "path" => "", "error" => "Image exceeds the 5MB size limit."];
+    }
+
+    $ext = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
+    if(!in_array($ext, $allowed_ext)) {
+        return ["ok" => false, "path" => "", "error" => "Invalid file type. Only JPG, JPEG, PNG, WEBP & AVIF files allowed."];
+    }
+
+    // Verify the file is actually an image (extension alone can't be trusted)
+    $mime = mime_content_type($file['tmp_name']);
+    if($mime === false || !in_array($mime, $allowed_mime)) {
+        return ["ok" => false, "path" => "", "error" => "Uploaded file is not a valid image."];
+    }
+
+    if (!file_exists($target_dir)) {
+        mkdir($target_dir, 0755, true);
+    }
+
+    // Fully random filename avoids collisions and strips any attacker-controlled name
+    $file_name = bin2hex(random_bytes(16)) . "." . $ext;
+    $target_file = $target_dir . $file_name;
+
+    if(!move_uploaded_file($file['tmp_name'], $target_file)) {
+        return ["ok" => false, "path" => "", "error" => "Failed to save the uploaded image file safely to folder storage."];
+    }
+
+    return ["ok" => true, "path" => "uploads/" . $file_name, "error" => ""];
+}
+
+// Normalize + validate a category string (free text, but keep it sane)
+function clean_category($raw) {
+    $cat = trim($raw ?? "");
+    if($cat === "") return "Uncategorized";
+    if(mb_strlen($cat) > 100) $cat = mb_substr($cat, 0, 100);
+    return $cat;
+}
+
 $message = "";
 $message_type = "";
 
 // 1. ADD FOOD WITH FILE UPLOAD & CATEGORY
 if($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['add'])){
-    $name = trim($_POST['name']);
-    $price = intval($_POST['price']);
-    $category = isset($_POST['category']) ? trim($_POST['category']) : "all"; 
-    $image_path = ""; 
+    verify_csrf();
+
+    $title = trim($_POST['title'] ?? '');
+    $description = trim($_POST['description'] ?? '');
+    $price = isset($_POST['price']) ? (float)$_POST['price'] : 0;
+    $category = clean_category($_POST['category'] ?? '');
+    $is_available = isset($_POST['is_available']) ? 1 : 0;
+    $image_path = "";
 
     if(isset($_FILES['image']) && $_FILES['image']['error'] == 0) {
-        $target_dir = "../uploads/";
-        
-        if (!file_exists($target_dir)) {
-            mkdir($target_dir, 0777, true);
-        }
-
-        $file_name = time() . "_" . basename($_FILES["image"]["name"]);
-        $target_file = $target_dir . $file_name;
-        $image_file_type = strtolower(pathinfo($target_file, PATHINFO_EXTENSION));
-        
-        $allowed_types = array("jpg", "jpeg", "png", "webp", "avif");
-        if(in_array($image_file_type, $allowed_types)) {
-            if(move_uploaded_file($_FILES["image"]["tmp_name"], $target_file)) {
-                $image_path = "uploads/" . $file_name;
-            } else {
-                $message = "Failed to save the uploaded image file safely to folder storage.";
-                $message_type = "error";
-            }
+        $upload = handle_image_upload($_FILES['image'], "../uploads/");
+        if($upload['ok']) {
+            $image_path = $upload['path'];
         } else {
-            $message = "Invalid file type. Only JPG, JPEG, PNG, WEBP & AVIF files allowed.";
+            $message = $upload['error'];
             $message_type = "error";
         }
     }
 
-    if(empty($message) && !empty($name) && $price > 0) {
-        $col_check = $conn->query("SHOW COLUMNS FROM food LIKE 'category'");
-        
-        if($col_check && $col_check->num_rows > 0) {
-            $stmt = $conn->prepare("INSERT INTO food (name, price, image, category) VALUES (?, ?, ?, ?)");
-            $stmt->bind_param("siss", $name, $price, $image_path, $category);
-        } else {
-            $stmt = $conn->prepare("INSERT INTO food (name, price, image) VALUES (?, ?, ?)");
-            $stmt->bind_param("sis", $name, $price, $image_path);
-        }
-        
+    if(empty($message) && $title !== '' && $price > 0) {
+        $stmt = $conn->prepare("INSERT INTO food (title, description, price, image, category, is_available) VALUES (?, ?, ?, ?, ?, ?)");
+        $stmt->bind_param("ssdssi", $title, $description, $price, $image_path, $category, $is_available);
+
         if($stmt->execute()){
             $message = "New food item integrated successfully!";
             $message_type = "success";
         } else {
-            $message = "Database Processing Error: " . $stmt->error;
+            $message = "Database processing error while adding the item.";
             $message_type = "error";
         }
         $stmt->close();
     } elseif(empty($message)) {
-        $message = "Please insert an accurate food description name and price range values.";
+        $message = "Please insert an accurate food title and a price greater than zero.";
         $message_type = "error";
     }
 }
 
 // 2. UPDATE/EDIT FOOD ASSET PROCESSING
 if($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['update'])){
+    verify_csrf();
+
     $id = intval($_POST['edit_id']);
-    $name = trim($_POST['name']);
-    $price = intval($_POST['price']);
-    $category = isset($_POST['category']) ? trim($_POST['category']) : "all";
-    
+    $title = trim($_POST['title'] ?? '');
+    $description = trim($_POST['description'] ?? '');
+    $price = isset($_POST['price']) ? (float)$_POST['price'] : 0;
+    $category = clean_category($_POST['category'] ?? '');
+    $is_available = isset($_POST['is_available']) ? 1 : 0;
+
     // Fetch existing details to preserve current thumbnail if no replacement is uploaded
     $curr_stmt = $conn->prepare("SELECT image FROM food WHERE id = ?");
     $curr_stmt->bind_param("i", $id);
@@ -84,51 +128,43 @@ if($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['update'])){
     $curr_stmt->close();
 
     if(isset($_FILES['image']) && $_FILES['image']['error'] == 0) {
-        $target_dir = "../uploads/";
-        $file_name = time() . "_" . basename($_FILES["image"]["name"]);
-        $target_file = $target_dir . $file_name;
-        $image_file_type = strtolower(pathinfo($target_file, PATHINFO_EXTENSION));
-        
-        $allowed_types = array("jpg", "jpeg", "png", "webp", "avif");
-        if(in_array($image_file_type, $allowed_types)) {
-            if(move_uploaded_file($_FILES["image"]["tmp_name"], $target_file)) {
-                // Delete old file safely if it exists
-                if(!empty($image_path) && file_exists("../" . $image_path)) {
-                    unlink("../" . $image_path);
-                }
-                $image_path = "uploads/" . $file_name;
+        $upload = handle_image_upload($_FILES['image'], "../uploads/");
+        if($upload['ok']) {
+            // Delete old file safely if it exists
+            if(!empty($image_path) && file_exists("../" . $image_path)) {
+                unlink("../" . $image_path);
             }
+            $image_path = $upload['path'];
         } else {
-            $message = "Invalid image extension structure for update.";
+            $message = $upload['error'];
             $message_type = "error";
         }
     }
 
-    if(empty($message) && !empty($name) && $price > 0) {
-        $col_check = $conn->query("SHOW COLUMNS FROM food LIKE 'category'");
-        if($col_check && $col_check->num_rows > 0) {
-            $stmt = $conn->prepare("UPDATE food SET name=?, price=?, image=?, category=? WHERE id=?");
-            $stmt->bind_param("sissi", $name, $price, $image_path, $category, $id);
-        } else {
-            $stmt = $conn->prepare("UPDATE food SET name=?, price=?, image=? WHERE id=?");
-            $stmt->bind_param("sisi", $name, $price, $image_path, $id);
-        }
-        
+    if(empty($message) && $title !== '' && $price > 0) {
+        $stmt = $conn->prepare("UPDATE food SET title=?, description=?, price=?, image=?, category=?, is_available=? WHERE id=?");
+        $stmt->bind_param("ssdssii", $title, $description, $price, $image_path, $category, $is_available, $id);
+
         if($stmt->execute()) {
             $message = "Food configuration altered successfully!";
             $message_type = "success";
         } else {
-            $message = "Database Update Error: " . $stmt->error;
+            $message = "Database update error while saving changes.";
             $message_type = "error";
         }
         $stmt->close();
+    } elseif(empty($message)) {
+        $message = "Please insert an accurate food title and a price greater than zero.";
+        $message_type = "error";
     }
 }
 
-// 3. SECURE DELETE FOOD ACTION LOOP
-if(isset($_GET['delete'])){
-    $id = intval($_GET['delete']);
-    
+// 3. SECURE DELETE FOOD ACTION (POST + CSRF, not a bare GET link)
+if($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['delete'])){
+    verify_csrf();
+
+    $id = intval($_POST['delete']);
+
     $img_stmt = $conn->prepare("SELECT image FROM food WHERE id = ?");
     $img_stmt->bind_param("i", $id);
     $img_stmt->execute();
@@ -142,9 +178,18 @@ if(isset($_GET['delete'])){
     $stmt->bind_param("i", $id);
     $stmt->execute();
     $stmt->close();
-    
-    echo "<script>window.location.href='food.php';</script>";
+
+    header("Location: food.php");
     exit();
+}
+
+// ---- Pull existing categories from the data itself for the datalist ----
+$existing_categories = [];
+$cat_res = $conn->query("SELECT DISTINCT category FROM food WHERE category IS NOT NULL AND category <> '' ORDER BY category ASC");
+if($cat_res) {
+    while($c = $cat_res->fetch_assoc()) {
+        $existing_categories[] = $c['category'];
+    }
 }
 ?>
 <!DOCTYPE html>
@@ -168,7 +213,6 @@ if(isset($_GET['delete'])){
             color: #333;
         }
 
-        /* SIDEBAR PANEL NAVIGATION */
         .sidebar {
             width: 270px;
             background: #0f1115;
@@ -212,7 +256,7 @@ if(isset($_GET['delete'])){
             transition: all 0.3s ease;
         }
 
-        .sidebar ul li a:hover, 
+        .sidebar ul li a:hover,
         .sidebar ul li a.active {
             background: #ff3b3b;
             color: white;
@@ -229,14 +273,12 @@ if(isset($_GET['delete'])){
             color: white;
         }
 
-        /* MAIN CONTENT AREA */
         .main-content {
             margin-left: 270px;
             flex: 1;
             padding: 40px 50px;
         }
 
-        /* HEADER TOP BAR */
         .header-bar {
             display: flex;
             justify-content: space-between;
@@ -254,7 +296,6 @@ if(isset($_GET['delete'])){
             font-weight: 700;
         }
 
-        /* NOTIFICATION ALERTS */
         .alert {
             padding: 16px 24px;
             border-radius: 12px;
@@ -266,7 +307,6 @@ if(isset($_GET['delete'])){
         .alert.success { background: #dff0e3; color: #1e4620; border-left: 5px solid #2e7d32; }
         .alert.error { background: #fce8e6; color: #c53030; border-left: 5px solid #e53e3e; }
 
-        /* FORM BOX */
         .form-box {
             background: white;
             padding: 35px;
@@ -295,9 +335,11 @@ if(isset($_GET['delete'])){
             flex-direction: column;
             gap: 8px;
         }
-        
+
+        .col-3 { grid-column: span 3; }
         .col-4 { grid-column: span 4; }
-        .col-2 { grid-column: span 2; }
+        .col-6 { grid-column: span 6; }
+        .col-12 { grid-column: span 12; }
 
         .form-group label {
             font-size: 13px;
@@ -307,7 +349,7 @@ if(isset($_GET['delete'])){
             letter-spacing: 0.5px;
         }
 
-        .form-group input, .form-group select {
+        .form-group input, .form-group select, .form-group textarea {
             width: 100%;
             padding: 13px 16px;
             border: 1px solid #e2e8f0;
@@ -317,9 +359,12 @@ if(isset($_GET['delete'])){
             color: #2d3748;
             background: #f8fafc;
             transition: all 0.2s ease;
+            font-family: inherit;
         }
 
-        .form-group input:focus, .form-group select:focus {
+        .form-group textarea { resize: vertical; min-height: 48px; }
+
+        .form-group input:focus, .form-group select:focus, .form-group textarea:focus {
             border-color: #ff3b3b;
             background: white;
             box-shadow: 0 0 0 3px rgba(255, 59, 59, 0.1);
@@ -332,8 +377,16 @@ if(isset($_GET['delete'])){
             cursor: pointer;
         }
 
+        .checkbox-group {
+            flex-direction: row;
+            align-items: center;
+            gap: 10px !important;
+            padding-bottom: 13px;
+        }
+        .checkbox-group input { width: auto; }
+
         .form-grid button, .modal-footer button {
-            grid-column: span 2;
+            grid-column: span 3;
             padding: 14px 24px;
             background: linear-gradient(135deg, #ff3b3b, #ff6a00);
             color: white;
@@ -352,7 +405,6 @@ if(isset($_GET['delete'])){
             box-shadow: 0 6px 15px rgba(255, 59, 59, 0.3);
         }
 
-        /* DATA TABLE CARD CONTAINER */
         .table-container {
             background: white;
             border-radius: 20px;
@@ -395,7 +447,7 @@ if(isset($_GET['delete'])){
         tr:hover td {
             background: #fdfdfd;
         }
-        
+
         .food-thumb {
             width: 70px;
             height: 52px;
@@ -410,6 +462,16 @@ if(isset($_GET['delete'])){
             color: #1a202c;
             font-size: 16px;
         }
+        .food-desc {
+            display: block;
+            font-size: 12px;
+            color: #a0aec0;
+            font-weight: 500;
+            max-width: 260px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
 
         .badge {
             display: inline-block;
@@ -423,13 +485,15 @@ if(isset($_GET['delete'])){
             color: #ff3b3b;
         }
 
+        .badge.available { background: rgba(46, 125, 50, 0.08); color: #2e7d32; }
+        .badge.unavailable { background: rgba(160, 174, 192, 0.15); color: #718096; }
+
         .price-tag {
             color: #2d3748;
             font-weight: 700;
             font-size: 16px;
         }
 
-        /* ACTION LINKS COMPONENT */
         .action-cell {
             display: flex;
             align-items: center;
@@ -448,12 +512,13 @@ if(isset($_GET['delete'])){
             border-radius: 8px;
             transition: all 0.2s ease;
             cursor: pointer;
+            border: none;
+            font-family: inherit;
         }
 
         .edit-btn {
             color: #3182ce;
             background: rgba(49, 130, 206, 0.06);
-            border: none;
         }
         .edit-btn:hover {
             background: #3182ce;
@@ -468,8 +533,8 @@ if(isset($_GET['delete'])){
             background: #e53e3e;
             color: white;
         }
+        .delete-form { display: inline; }
 
-        /* PREMIUM DYNAMIC INTERFACE OVERLAY MODAL */
         .edit-modal-overlay {
             position: fixed;
             top: 0; left: 0; width: 100%; height: 100%;
@@ -491,6 +556,8 @@ if(isset($_GET['delete'])){
             background: white;
             width: 100%;
             max-width: 550px;
+            max-height: 90vh;
+            overflow-y: auto;
             border-radius: 20px;
             padding: 35px;
             box-shadow: 0 20px 40px rgba(0,0,0,0.15);
@@ -540,7 +607,6 @@ if(isset($_GET['delete'])){
             cursor: pointer;
         }
 
-        /* ANIMATIONS */
         .header-bar, .form-box, .table-container {
             animation: slideIn 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
         }
@@ -555,7 +621,6 @@ if(isset($_GET['delete'])){
             from { opacity: 0; } to { opacity: 1; }
         }
 
-        /* RESPONSIVE STYLING */
         @media (max-width: 1200px) {
             .form-grid { display: flex; flex-direction: column; align-items: stretch; }
             .form-grid button { height: auto; }
@@ -614,40 +679,49 @@ if(isset($_GET['delete'])){
     </div>
 
     <div class="main-content">
-        
+
         <div class="header-bar">
             <h1>Manage Menu Catalog</h1>
         </div>
 
         <?php if(!empty($message)): ?>
-            <div class="alert <?= $message_type ?>"><?= $message ?></div>
+            <div class="alert <?= htmlspecialchars($message_type) ?>"><?= htmlspecialchars($message) ?></div>
         <?php endif; ?>
 
         <div class="form-box">
             <h3>Add New Food Item</h3>
             <form method="POST" enctype="multipart/form-data" class="form-grid">
+                <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrf_token) ?>">
                 <div class="form-group col-4">
-                    <label>Food Item Name</label>
-                    <input type="text" name="name" placeholder="e.g., Crunchy Momo" required>
+                    <label>Food Item Title</label>
+                    <input type="text" name="title" placeholder="e.g., Crunchy Momo" required maxlength="255">
                 </div>
-                <div class="form-group col-2">
+                <div class="form-group col-3">
                     <label>Price (Rs)</label>
-                    <input type="number" name="price" placeholder="Price" required min="1">
+                    <input type="number" name="price" placeholder="Price" required min="0.01" step="0.01">
                 </div>
-                <div class="form-group col-2">
+                <div class="form-group col-3">
                     <label>Menu Category</label>
-                    <select name="category">
-                        <option value="momo">Momo</option>
-                        <option value="pizza">Pizza</option>
-                        <option value="burger">Burger</option>
-                        <option value="drinks">Drinks</option>
-                    </select>
+                    <input type="text" name="category" list="category-options" placeholder="e.g., Momo" maxlength="100">
+                    <datalist id="category-options">
+                        <?php foreach($existing_categories as $ec): ?>
+                            <option value="<?= htmlspecialchars($ec) ?>">
+                        <?php endforeach; ?>
+                    </datalist>
+                </div>
+                <div class="form-group col-2 checkbox-group">
+                    <input type="checkbox" name="is_available" id="add_available" checked>
+                    <label for="add_available" style="text-transform:none;">Available</label>
+                </div>
+                <div class="form-group col-6">
+                    <label>Description</label>
+                    <textarea name="description" placeholder="Short description (optional)"></textarea>
                 </div>
                 <div class="form-group col-4">
                     <label>Product Thumbnail</label>
                     <input type="file" name="image" accept="image/*">
                 </div>
-                <button name="add">Add Food</button>
+                <button name="add" class="col-2">Add Food</button>
             </form>
         </div>
 
@@ -659,6 +733,7 @@ if(isset($_GET['delete'])){
                         <th>Food Item Name</th>
                         <th>Category</th>
                         <th>Unit Price</th>
+                        <th>Status</th>
                         <th style="width: 220px; text-align: center;">Action</th>
                     </tr>
                 </thead>
@@ -667,32 +742,57 @@ if(isset($_GET['delete'])){
                     $res = $conn->query("SELECT * FROM food ORDER BY id DESC");
                     if($res && $res->num_rows > 0) {
                         while($row = $res->fetch_assoc()){
-                            $img_src = !empty($row['image']) ? "../" . $row['image'] : "https://images.unsplash.com/photo-1498837167922-ddd27525d352?w=150";
-                            $cat_display = isset($row['category']) ? htmlspecialchars($row['category']) : "all";
+                            $img_src = !empty($row['image']) ? "../" . htmlspecialchars($row['image']) : "https://images.unsplash.com/photo-1498837167922-ddd27525d352?w=150";
+                            $cat_display = !empty($row['category']) ? $row['category'] : "Uncategorized";
+                            $available = !empty($row['is_available']);
+                            // Data passed to JS is JSON-encoded, avoiding fragile addslashes()+htmlspecialchars() escaping
+                            $edit_payload = htmlspecialchars(json_encode([
+                                "id" => $row['id'],
+                                "title" => $row['title'],
+                                "description" => $row['description'],
+                                "price" => $row['price'],
+                                "category" => $cat_display,
+                                "is_available" => (int)$available
+                            ]), ENT_QUOTES);
                             ?>
                             <tr>
                                 <td><img src="<?= $img_src ?>" class="food-thumb" alt="Product View"></td>
-                                <td><span class="food-name"><?= htmlspecialchars($row['name']) ?></span></td>
-                                <td><span class="badge"><?= $cat_display ?></span></td>
-                                <td><span class="price-tag">Rs <?= number_format($row['price']) ?></span></td>
+                                <td>
+                                    <span class="food-name"><?= htmlspecialchars($row['title']) ?></span>
+                                    <?php if(!empty($row['description'])): ?>
+                                        <span class="food-desc"><?= htmlspecialchars($row['description']) ?></span>
+                                    <?php endif; ?>
+                                </td>
+                                <td><span class="badge"><?= htmlspecialchars($cat_display) ?></span></td>
+                                <td><span class="price-tag">Rs <?= number_format((float)$row['price'], 2) ?></span></td>
+                                <td>
+                                    <span class="badge <?= $available ? 'available' : 'unavailable' ?>">
+                                        <?= $available ? 'Available' : 'Unavailable' ?>
+                                    </span>
+                                </td>
                                 <td>
                                     <div class="action-cell">
-                                        <button class="action-btn edit-btn" 
-                                                onclick="openEditModal(<?= $row['id'] ?>, '<?= addslashes(htmlspecialchars($row['name'])) ?>', <?= $row['price'] ?>, '<?= addslashes(htmlspecialchars($cat_display)) ?>')">
+                                        <button type="button" class="action-btn edit-btn"
+                                                data-food="<?= $edit_payload ?>"
+                                                onclick="openEditModal(this)">
                                             <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 1 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
                                             Edit
                                         </button>
-                                        <a href="food.php?delete=<?= $row['id'] ?>" class="action-btn delete-btn" onclick="return confirm('Permanently remove this food item asset from listing catalog?')">
-                                            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
-                                            Remove
-                                        </a>
+                                        <form method="POST" class="delete-form" onsubmit="return confirm('Permanently remove this food item asset from listing catalog?')">
+                                            <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrf_token) ?>">
+                                            <input type="hidden" name="delete" value="<?= (int)$row['id'] ?>">
+                                            <button type="submit" class="action-btn delete-btn">
+                                                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                                                Remove
+                                            </button>
+                                        </form>
                                     </div>
                                 </td>
                             </tr>
-                            <?php 
+                            <?php
                         }
                     } else {
-                        echo "<tr><td colspan='5' style='text-align:center; padding:40px; color:#a0aec0; font-weight:600;'>No food menu assets registered inside the database catalog.</td></tr>";
+                        echo "<tr><td colspan='6' style='text-align:center; padding:40px; color:#a0aec0; font-weight:600;'>No food menu assets registered inside the database catalog.</td></tr>";
                     }
                     ?>
                 </tbody>
@@ -707,28 +807,34 @@ if(isset($_GET['delete'])){
                 <button class="close-modal" onclick="closeEditModal()">&times;</button>
             </div>
             <form method="POST" enctype="multipart/form-data" class="modal-form-stack">
+                <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrf_token) ?>">
                 <input type="hidden" name="edit_id" id="modal_edit_id">
-                
+
                 <div class="form-group">
-                    <label>Food Item Name</label>
-                    <input type="text" name="name" id="modal_edit_name" required>
+                    <label>Food Item Title</label>
+                    <input type="text" name="title" id="modal_edit_title" required maxlength="255">
                 </div>
-                
+
+                <div class="form-group">
+                    <label>Description</label>
+                    <textarea name="description" id="modal_edit_description" placeholder="Short description (optional)"></textarea>
+                </div>
+
                 <div class="form-group">
                     <label>Price (Rs)</label>
-                    <input type="number" name="price" id="modal_edit_price" required min="1">
+                    <input type="number" name="price" id="modal_edit_price" required min="0.01" step="0.01">
                 </div>
-                
+
                 <div class="form-group">
                     <label>Menu Category</label>
-                    <select name="category" id="modal_edit_category">
-                        <option value="momo">Momo</option>
-                        <option value="pizza">Pizza</option>
-                        <option value="burger">Burger</option>
-                        <option value="drinks">Drinks</option>
-                    </select>
+                    <input type="text" name="category" id="modal_edit_category" list="category-options" maxlength="100">
                 </div>
-                
+
+                <div class="form-group checkbox-group">
+                    <input type="checkbox" name="is_available" id="modal_edit_available">
+                    <label for="modal_edit_available" style="text-transform:none;">Available</label>
+                </div>
+
                 <div class="form-group">
                     <label>Replacement Thumbnail (Keep blank to retain original)</label>
                     <input type="file" name="image" accept="image/*">
@@ -744,13 +850,16 @@ if(isset($_GET['delete'])){
 
     <script>
         const overlay = document.getElementById('editModalOverlay');
-        
-        function openEditModal(id, name, price, category) {
-            document.getElementById('modal_edit_id').value = id;
-            document.getElementById('modal_edit_name').value = name;
-            document.getElementById('modal_edit_price').value = price;
-            document.getElementById('modal_edit_category').value = category;
-            
+
+        function openEditModal(btn) {
+            const food = JSON.parse(btn.dataset.food);
+            document.getElementById('modal_edit_id').value = food.id;
+            document.getElementById('modal_edit_title').value = food.title;
+            document.getElementById('modal_edit_description').value = food.description || '';
+            document.getElementById('modal_edit_price').value = food.price;
+            document.getElementById('modal_edit_category').value = food.category;
+            document.getElementById('modal_edit_available').checked = !!food.is_available;
+
             overlay.classList.add('active');
         }
 
@@ -758,7 +867,6 @@ if(isset($_GET['delete'])){
             overlay.classList.remove('active');
         }
 
-        // Close on overlay outside container tap background context
         overlay.addEventListener('click', (e) => {
             if (e.target === overlay) closeEditModal();
         });

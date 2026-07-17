@@ -183,27 +183,28 @@ nav ul li a:hover::after{
 
 <div class="filters">
     <button onclick="filter('all')">All Items</button>
+    <button onclick="filter('Burgers')">Burgers</button>
+    <button onclick="filter('Noodles')">Noodles</button>
+    <button onclick="filter('Beverages')">Beverages</button>
 </div>
 
 <div class="menu-container">
 
     <?php
-    // 1. Querying the exact table name 'food' shown in your phpMyAdmin screenshot
     $query = "SELECT * FROM food"; 
     $result = $conn->query($query);
 
     if ($result && $result->num_rows > 0) {
         while ($row = $result->fetch_assoc()) {
             
-            // 2. Map directly to your actual columns: 'name', 'price', and 'image'
-            $food_name = htmlspecialchars($row['name']);
+            // 🔥 FIXED: Changed 'name' to 'title' to match database columns
+            $food_name = htmlspecialchars($row['title']);
             $price     = floatval($row['price']);
             $image     = htmlspecialchars($row['image']);
             
-            // Safe fallback defaults since 'category' column is not found on your database schema
-            $category  = "all"; 
+            // 🔥 FIXED: Pulls dynamic category class names for filtering options
+            $category  = htmlspecialchars($row['category']); 
             
-            // If the image column is NULL or empty string, fallback to a clean placeholder food picture
             if(empty($image)) {
                 $image = "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=500";
             }
