@@ -30,7 +30,7 @@ $currentPage = basename($_SERVER['PHP_SELF']);
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Foodmandu - Home</title>
+<title>AnnSatu - Home</title>
 
 <style>
 *{
@@ -399,7 +399,7 @@ nav ul li a[href="logout.php"]:hover {
     <div class="footer-container">
 
         <div class="footer-box">
-            <h3>Foodmandu</h3>
+            <h3>AnnSatu</h3>
             <p>Fast, fresh, and reliable food delivery.</p>
         </div>
 
@@ -415,13 +415,13 @@ nav ul li a[href="logout.php"]:hover {
             <h3>Contact</h3>
             <a href="#">📍 Kathmandu, Nepal</a>
             <a href="#">📞 +977 9800000000</a>
-            <a href="#">📧 support@foodmandu.com</a>
+            <a href="#">📧 support@annsatu.com</a>
         </div>
 
     </div>
 
     <div class="bottom-footer">
-        © 2026 Foodmandu. All Rights Reserved.
+        © 2026 AnnSatu. All Rights Reserved.
     </div>
 </footer>
 

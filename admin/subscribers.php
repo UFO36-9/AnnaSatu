@@ -55,7 +55,7 @@ $total = $res ? $res->num_rows : 0;
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Foodmandu - Subscribers</title>
+    <title>AnnSatu - Subscribers</title>
     <style>
         * {
             margin: 0;
@@ -343,7 +343,7 @@ $total = $res ? $res->num_rows : 0;
 <body>
 
     <div class="sidebar">
-        <h2>Foodmandu Admin</h2>
+        <h2>AnnSatu Admin</h2>
         <ul>
             <li><a href="dashboard.php">📊 Dashboard Overview</a></li>
             <li><a href="food.php">🍔 Manage Foods</a></li>

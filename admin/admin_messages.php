@@ -384,7 +384,7 @@ $result = $conn->query("SELECT * FROM contact_messages ORDER BY created_at DESC"
 <body>
 
     <div class="sidebar">
-        <h2>Foodmandu</h2>
+        <h2>AnnSatu</h2>
         <ul>
             <li>
                 <a href="dashboard.php">

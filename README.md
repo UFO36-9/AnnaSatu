@@ -1,12 +1,12 @@
-# 🍔 FoodMandu - Online Food Ordering System
+# 🍔 AnnSatu - Online Food Ordering System
 
-FoodMandu is a web-based food ordering system developed using **PHP**, **MySQL**, **HTML**, **CSS**, and **JavaScript**. The system allows users to browse food items, place orders, make online payments using **eSewa**, and enables administrators to manage the website through an admin panel.
+AnnSatu is a web-based food ordering system developed using **PHP**, **MySQL**, **HTML**, **CSS**, and **JavaScript**. The system allows users to browse food items, place orders, make online payments using **eSewa**, and enables administrators to manage the website through an admin panel.
 
 ---
 
 ## 📌 Project Overview
 
-The FoodMandu project is designed to provide customers with an easy and convenient way to order food online. Customers can browse the menu, register an account, place orders, and complete payments through the integrated eSewa payment gateway.
+The AnnSatu project is designed to provide customers with an easy and convenient way to order food online. Customers can browse the menu, register an account, place orders, and complete payments through the integrated eSewa payment gateway.
 
 The admin panel allows administrators to manage food items, customer orders, messages, and website content efficiently.
 
@@ -90,7 +90,7 @@ This project integrates **eSewa Payment Gateway** for secure online transactions
 ## 📁 Project Structure
 
 ```
-Foodmandu/
+AnnSatu/
 │
 ├── admin/
 ├── uploads/
@@ -120,7 +120,7 @@ Foodmandu/
 ### 1. Clone Repository
 
 ```bash
-git clone https://github.com/RoshanManandhar/foodmandu.git
+git clone https://github.com/UFO36-9/AnnaSatu.git
 ```
 
 ---
@@ -155,7 +155,7 @@ http://localhost/phpmyadmin
 Create a database
 
 ```
-foodmandu
+annsatu
 ```
 
 Import the SQL file into the database.
@@ -176,7 +176,7 @@ Example:
 $host = "localhost";
 $user = "root";
 $password = "";
-$database = "foodmandu";
+$database = "annsatu";
 ```
 
 ---
@@ -186,7 +186,7 @@ $database = "foodmandu";
 Open your browser
 
 ```
-http://localhost/foodmandu
+http://localhost/AnnaSatu
 ```
 
 ---

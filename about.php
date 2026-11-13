@@ -16,7 +16,7 @@ $team_rows = $team_result ? $team_result->fetch_all(MYSQLI_ASSOC) : [];
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Foodmandu - About</title>
+<title>AnnSatu - About</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Work+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -433,7 +433,7 @@ nav ul li a:hover::after{
 
 <!-- HERO IMAGE BANNER -->
 <div class="hero">
-    <h1>About Foodmandu 🍔</h1>
+    <h1>About AnnSatu 🍔</h1>
 </div>
 
 <!-- STORY LINES -->
@@ -442,7 +442,7 @@ nav ul li a:hover::after{
     <div class="story-content">
         <p>
             Founded with a passion for connecting food lovers with their favorite culinary destinations, 
-            <strong>Foodmandu</strong> has grown into Nepal’s leading food delivery platform. We bridge the 
+            <strong>AnnSatu</strong> has grown into Nepal’s leading food delivery platform. We bridge the
             gap between local food enthusiasts and the city's finest restaurants, bringing diverse, high-quality, 
             and authentic flavors straight to your doorstep.
         </p>

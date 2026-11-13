@@ -13,7 +13,7 @@ if(!isset($_SESSION['admin'])){
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Foodmandu - Admin Dashboard</title>
+    <title>AnnSatu - Admin Dashboard</title>
     <style>
         * {
             margin: 0;
@@ -244,7 +244,7 @@ if(!isset($_SESSION['admin'])){
 <body>
 
     <div class="sidebar">
-        <h2>Foodmandu</h2>
+        <h2>AnnSatu</h2>
         <ul>
             <li>
                 <a href="dashboard.php" class="active">

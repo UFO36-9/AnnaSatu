@@ -66,7 +66,7 @@ if(isset($_GET['edit'])){
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Manage Orders - Foodmandu Admin</title>
+    <title>Manage Orders - AnnSatu Admin</title>
     <style>
         * {
             margin: 0;
@@ -356,7 +356,7 @@ if(isset($_GET['edit'])){
 <body>
 
     <div class="sidebar">
-        <h2>Foodmandu</h2>
+        <h2>AnnSatu</h2>
         <ul>
             <li>
                 <a href="dashboard.php">

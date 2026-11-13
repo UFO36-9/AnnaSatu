@@ -124,7 +124,7 @@
 
 <nav class="fm-navbar">
     <a href="index.php" class="fm-logo">
-        <img src="logo (1).svg" alt="Foodmandu">
+        <img src="annsatu-logo.svg" alt="AnnSatu">
     </a>
     <ul>
         <li><a href="index.php">Home</a></li>

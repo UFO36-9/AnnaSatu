@@ -1,4 +1,5 @@
 {
+  "name": "annsatu",
   "dependencies": {
     "crypto-js": "^4.2.0",
     "react-router": "^8.2.0",

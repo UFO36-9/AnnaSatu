@@ -24,7 +24,7 @@ $since_year = !empty($member['created_at']) ? date('Y', strtotime($member['creat
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Foodmandu - <?= htmlspecialchars($member['name']) ?></title>
+<title>AnnSatu - <?= htmlspecialchars($member['name']) ?></title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Work+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
